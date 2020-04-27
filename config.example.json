@@ -1,0 +1,13 @@
+{
+  "channels": ["yourchannelname"],
+  "nextCommand": "!next",
+  "stayCommand": "!stay",
+  "currentCommand": "!currentStream",
+  "titleKeyword": "#hackalong",
+  "messageTypes": ["chat", "action", "whisper"],
+  "voteTimeoutMs": 30000,
+  "currentTimeoutMs": 30000,
+  "oauthToken": "oauth:1234567890...",
+  "clientId": "6mpwge1p7z0yxjsibbbupjuepqhqe2",
+  "minmaxima": 42
+}

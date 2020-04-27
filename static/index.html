@@ -1,0 +1,94 @@
+<html>
+  <head>
+    <script src="/primus/primus.js"></script>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      iframe {
+        width: 100%;
+        height: auto;
+      }
+
+      #voteCount {
+        width: 100%;
+      }
+
+      #timer {
+        width: 0%;
+        /* position: absolute;
+        top: 0;
+        left: 0; */
+        height: 42px;
+        background: green;
+        transition: width 1200ms linear, background 1200ms;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="timer"></div>
+    <iframe id="player" src=""></iframe>
+    <input id="voteCount" type="range" min="-42" max="42" value="0" />
+  </body>
+
+  <script>
+    const primus = new Primus();
+
+    const playerElement = document.getElementById("player");
+    const voteCountElement = document.getElementById("voteCount");
+    const timerElement = document.getElementById("timer");
+
+    const state = {
+      channelName: "",
+      voteCount: 0,
+      lastUpdateTimestamp: Date.now(),
+    };
+
+    primus.on("data", function message(data) {
+      console.log({ data });
+      // the message we've received.
+      if (data.eventName === "voteCount") {
+        state.voteCount = data.payload;
+        state.lastUpdateTimestamp = Date.now();
+      } else if (data.eventName === "changeStream") {
+        state.channelName = data.payload;
+        state.voteCount = 0;
+        state.lastUpdateTimestamp = Date.now();
+      }
+
+      render();
+    });
+
+    function getPlayerUrl(channelName) {
+      return `https://player.twitch.tv/?channel=${channelName}&enableExtensions=false&muted=false&player=popout&volume=1`;
+    }
+
+    function render() {
+      console.log("rerendering");
+
+      if (playerElement.src !== getPlayerUrl(state.channelName)) {
+        playerElement.src = getPlayerUrl(state.channelName);
+      }
+
+      voteCountElement.value = state.voteCount;
+      if (state.voteCount > 0) {
+        timerElement.style.background = "red";
+      } else {
+        timerElement.style.background = "green";
+      }
+    }
+
+    setInterval(function () {
+      const percentage =
+        ((Date.now() - state.lastUpdateTimestamp) / 30000) * 100;
+      console.log({ percentage });
+      timerElement.style.width = percentage + "%";
+    }, 1000);
+
+    render();
+  </script>
+</html>
