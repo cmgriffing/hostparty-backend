@@ -201,9 +201,13 @@ module.exports = function startHostParty(hostPartyServerConfig) {
       )
       .then((result) => {
         console.log("streams", result.data.streams);
-        state.streams = result.data.streams.map((stream) => {
-          return stream.channel.name;
-        });
+        state.streams = result.data.streams
+          .filter((stream) => {
+            return stream.channel.status.indexOf(config.titleKeyword) > 0;
+          })
+          .map((stream) => {
+            return stream.channel.name;
+          });
       })
       .catch((e) => {
         console.log({ e });
