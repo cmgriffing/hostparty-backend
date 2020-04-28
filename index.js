@@ -28,6 +28,7 @@ try {
 
 module.exports = function startHostParty(hostPartyServerConfig) {
   const app = express();
+  console.log({ __dirname });
   app.use(express.static(__dirname + "/static"));
 
   const server = http.createServer(app);

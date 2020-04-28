@@ -11,6 +11,7 @@
       iframe {
         width: 100%;
         height: auto;
+        border: 0;
       }
 
       #voteCount {
@@ -69,6 +70,11 @@
 
     function render() {
       console.log("rerendering");
+
+      if (!playerElement) {
+        console.log("No player element?");
+        return;
+      }
 
       if (playerElement.src !== getPlayerUrl(state.channelName)) {
         playerElement.src = getPlayerUrl(state.channelName);
