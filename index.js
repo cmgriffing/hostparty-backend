@@ -28,7 +28,7 @@ try {
 
 module.exports = function startHostParty(hostPartyServerConfig) {
   const app = express();
-  app.use(express.static("static"));
+  app.use(express.static(__dirname + "/static"));
 
   const server = http.createServer(app);
   const primus = new Primus(server, {});
