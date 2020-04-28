@@ -1,11 +1,30 @@
 const tmi = require("tmi.js");
 const cloneDeep = require("lodash/cloneDeep");
-const config = require("./config.json");
 const axios = require("axios");
 
 const Primus = require("primus");
 const http = require("http");
 const express = require("express");
+
+let devConfig;
+
+try {
+  devConfig = require("./config.json");
+} catch (e) {
+  console.log("No dev config found for hostparty-backend.");
+}
+
+let config = devConfig;
+
+try {
+  config = require(process.cwd() + "/config.json");
+} catch (e) {
+  console.log("No local config found.");
+  if (!config) {
+    console.error("No config found for hostparty-backend.");
+    process.exit(1);
+  }
+}
 
 module.exports = function startHostParty(hostPartyServerConfig) {
   const app = express();
@@ -152,13 +171,13 @@ module.exports = function startHostParty(hostPartyServerConfig) {
   });
 
   function fetchStreams() {
-    state.streams = [
-      "cmgriffing",
-      "griffingandchill",
-      "theprimeagen",
-      "strager",
-      "newnoiseworks",
-    ];
+    // state.streams = [
+    //   "cmgriffing",
+    //   "griffingandchill",
+    //   "theprimeagen",
+    //   "strager",
+    //   "newnoiseworks",
+    // ];
 
     // This should be fine to have here hardcoded. It is a public value.
     let clientId = "6mpwge1p7z0yxjsibbbupjuepqhqe2"; //config.clientId;
@@ -181,9 +200,9 @@ module.exports = function startHostParty(hostPartyServerConfig) {
       )
       .then((result) => {
         console.log("streams", result.data.streams);
-        // state.streams = result.data.streams.map((stream) => {
-        //   return stream.channel.name;
-        // });
+        state.streams = result.data.streams.map((stream) => {
+          return stream.channel.name;
+        });
       })
       .catch((e) => {
         console.log({ e });
