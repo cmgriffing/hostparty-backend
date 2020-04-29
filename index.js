@@ -6,12 +6,23 @@ const Primus = require("primus");
 const http = require("http");
 const express = require("express");
 
+const defaultState = {
+  streams: [],
+  currentStream: "",
+  currentStreamVoteCount: 0,
+  stayCommandTimestamps: {},
+  nextCommandTimestamps: {},
+  currentCommandTimestamp: Date.now(),
+  changeStreamTimeout: 30000,
+  isPartying: false,
+};
+
 let devConfig;
 
 try {
   devConfig = require("./config.json");
 } catch (e) {
-  console.log("No dev config found for hostparty-backend.");
+  console.log("No dev config file found for hostparty-backend.");
 }
 
 let config = devConfig;
@@ -21,40 +32,84 @@ try {
 } catch (e) {
   console.log("No local config found.");
   if (!config) {
-    console.error("No config found for hostparty-backend.");
-    process.exit(1);
+    console.error("No config file found for hostparty-backend.");
+    // process.exit(1);
   }
 }
 
-module.exports = function startHostParty(hostPartyServerConfig) {
+let messageHandler;
+let spark;
+let searchInterval;
+let state = cloneDeep(defaultState);
+
+function startServers(serverConfig) {
   const app = express();
-  console.log({ __dirname });
   app.use(express.static(__dirname + "/static"));
 
   const server = http.createServer(app);
-  const primus = new Primus(server, {});
-
-  let spark;
+  primus = new Primus(server, {});
 
   server.listen(4242);
-  const defaultState = {
-    streams: [],
-    currentStream: "",
-    currentStreamVoteCount: 0,
-    stayCommandTimestamps: {},
-    nextCommandTimestamps: {},
-    currentCommandTimestamp: Date.now(),
-    changeStreamTimeout: 30000,
-  };
+}
 
-  let state = cloneDeep(defaultState);
+function fetchStreams() {
+  // state.streams = [
+  //   "cmgriffing",
+  //   "griffingandchill",
+  //   "theprimeagen",
+  //   "strager",
+  //   "newnoiseworks",
+  // ];
 
-  setInterval(() => {
+  // This should be fine to have here hardcoded. It is a public value.
+  let clientId = "6mpwge1p7z0yxjsibbbupjuepqhqe2"; //config.clientId;
+  if (config.clientId && config.clientId !== "") {
+    clientId = config.clientId;
+  }
+
+  return axios
+    .get(
+      `https://api.twitch.tv/kraken/search/streams?query=${encodeURIComponent(
+        config.titleKeyword
+      )}`,
+      {
+        headers: {
+          Accept: "application/vnd.twitchtv.v5+json",
+          "Client-ID": clientId,
+          Authorization: config.oauthToken,
+        },
+      }
+    )
+    .then((result) => {
+      console.log("streams", result.data.streams);
+      state.streams = result.data.streams
+        .filter((stream) => {
+          return stream.channel.status.indexOf(config.titleKeyword) > 0;
+        })
+        .map((stream) => {
+          return stream.channel.name;
+        });
+    })
+    .catch((e) => {
+      console.log({ e });
+    });
+}
+
+function startHostParty(hostPartyConfig) {
+  if (hostPartyConfig) {
+    config = hostPartyConfig;
+  }
+
+  state = cloneDeep(defaultState);
+
+  if (searchInterval) {
+    clearInterval(searchInterval);
+  }
+  searchInterval = setInterval(() => {
     fetchStreams();
   }, 30000);
   fetchStreams();
 
-  let messageHandler;
   // coerce config values against defaults
   tmiClient = new tmi.client({
     channels: [...config.channels],
@@ -68,6 +123,7 @@ module.exports = function startHostParty(hostPartyServerConfig) {
   });
 
   primus.on("connection", function (_spark) {
+    spark = _spark;
     if (!messageHandler) {
       messageHandler = (channel, userstate, message, self) => {
         console.log("Message: ", message);
@@ -130,87 +186,78 @@ module.exports = function startHostParty(hostPartyServerConfig) {
           }
         }
 
+        const shouldUpdateTimestamp =
+          (hasNextCommand && state.currentStreamVoteCount < 1) ||
+          (hasStayCommand && state.currentStreamVoteCount > 0);
+
         spark.write({
           eventName: "voteCount",
           payload: state.currentStreamVoteCount,
+          shouldUpdateTimestamp,
         });
 
-        if (state.changeStreamTimeout) {
-          clearTimeout(state.changeStreamTimeout);
-        }
-
-        state.changeStreamTimeout = setTimeout(() => {
-          if (state.currentStreamVoteCount > 0) {
-            changeStream();
-          } else {
-            console.log("Votes decided to STAY!");
+        if (shouldUpdateTimestamp) {
+          if (state.changeStreamTimeout) {
+            clearTimeout(state.changeStreamTimeout);
           }
-        }, config.voteTimeoutMs);
+
+          state.changeStreamTimeout = setTimeout(() => {
+            if (state.currentStreamVoteCount > 0) {
+              changeStream();
+            } else {
+              console.log("Votes decided to STAY!");
+            }
+          }, config.voteTimeoutMs);
+        }
       };
     }
 
-    spark = _spark;
+    spark.on("data", (data) => {
+      const { eventType, payload } = data;
+      if (eventType === "configChange") {
+        stopHostParty();
+        config = { ...deepClone(config), ...payload };
+        startHostParty();
+      } else if (eventType === "nextStream") {
+        changeStream();
+      } else if (eventType === "startHostParty") {
+        startHostParty();
+      } else if (eventType === "stopHostParty") {
+        stopHostParty();
+      } else if (eventType === "resetVotes") {
+        state.currentStreamVoteCount = 0;
+        spark.write({
+          eventName: "voteCount",
+          payload: state.currentStreamVoteCount,
+          shouldUpdateTimestamp: true,
+        });
+      }
+    });
 
-    function changeStream() {
-      const newStream =
-        state.streams[Math.floor(Math.random() * state.streams.length)];
-
-      state = {
-        ...cloneDeep(defaultState),
-        currentStream: newStream,
-      };
-
-      spark.write({ eventName: "changeStream", payload: newStream });
-    }
-
-    spark.write("testing");
     spark.write({ eventName: "changeStream", payload: state.currentStream });
     spark.write({
       eventName: "voteCount",
       payload: state.currentStreamVoteCount,
     });
   });
+}
 
-  function fetchStreams() {
-    // state.streams = [
-    //   "cmgriffing",
-    //   "griffingandchill",
-    //   "theprimeagen",
-    //   "strager",
-    //   "newnoiseworks",
-    // ];
+function stopHostParty() {}
 
-    // This should be fine to have here hardcoded. It is a public value.
-    let clientId = "6mpwge1p7z0yxjsibbbupjuepqhqe2"; //config.clientId;
-    if (config.clientId && config.clientId !== "") {
-      clientId = config.clientId;
-    }
+function changeStream() {
+  const newStream =
+    state.streams[Math.floor(Math.random() * state.streams.length)];
 
-    return axios
-      .get(
-        `https://api.twitch.tv/kraken/search/streams?query=${encodeURIComponent(
-          config.titleKeyword
-        )}`,
-        {
-          headers: {
-            Accept: "application/vnd.twitchtv.v5+json",
-            "Client-ID": clientId,
-            Authorization: config.oauthToken,
-          },
-        }
-      )
-      .then((result) => {
-        console.log("streams", result.data.streams);
-        state.streams = result.data.streams
-          .filter((stream) => {
-            return stream.channel.status.indexOf(config.titleKeyword) > 0;
-          })
-          .map((stream) => {
-            return stream.channel.name;
-          });
-      })
-      .catch((e) => {
-        console.log({ e });
-      });
-  }
+  state = {
+    ...cloneDeep(defaultState),
+    currentStream: newStream,
+  };
+
+  spark.write({ eventName: "changeStream", payload: newStream });
+}
+
+module.exports = {
+  startServers,
+  startHostParty,
+  stopHostParty,
 };

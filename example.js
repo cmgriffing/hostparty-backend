@@ -1,3 +1,7 @@
-const startHostPartyServer = require("./index.js");
+const { startHostParty, stopHostParty, startServers } = require("./index.js");
 
-startHostPartyServer();
+startServers();
+
+startHostParty();
+
+stopHostParty();

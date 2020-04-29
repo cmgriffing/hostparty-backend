@@ -54,7 +54,9 @@
       // the message we've received.
       if (data.eventName === "voteCount") {
         state.voteCount = data.payload;
-        state.lastUpdateTimestamp = Date.now();
+        if (data.shouldUpdateTimestamp) {
+          state.lastUpdateTimestamp = Date.now();
+        }
       } else if (data.eventName === "changeStream") {
         state.channelName = data.payload;
         state.voteCount = 0;
